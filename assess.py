@@ -24,9 +24,9 @@ class AI:
 
     Check those functions for detail.
     """
-    ctx : Context = None;
-    snake : Snake = None;
-    order : "dict[int,tuple[int,int]]" = dict();
+    ctx : Context;
+    snake : Snake;
+    order : "dict[int,tuple[int,int]]";#不完全确定
 
     def __init__(self):
         self.ctx = None
