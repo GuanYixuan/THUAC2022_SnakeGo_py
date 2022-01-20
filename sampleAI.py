@@ -12,7 +12,6 @@ SPLIT_LIMIT = 10
 SEARCH_LIMIT = 100
 # tunable parameters
 
-
 class AI:
     ctx : Context = None;
     snake : Snake = None;
@@ -28,7 +27,7 @@ class AI:
         self.item_alloc = [-1 for i in range(512)];
 
     def try_split(self) -> bool:
-        if self.snake.get_len() > 22 and self.ctx.get_snake_count(self.ctx.current_player) < 4:
+        if self.snake.get_len() > 18 and self.ctx.get_snake_count(self.ctx.current_player) < 4:
             logging.debug("主动分裂，长度%d" % self.snake.get_len());
             return True;
         return False;
@@ -50,11 +49,11 @@ class AI:
             dist = self.assess.dist_map[food.x][food.y];
             if dist == -1:
                 continue;
-            if food.time - self.ctx.turn >= 25 or self.ctx.turn + dist > food.time+7:#不找那么远（时间/空间上）的食物
+            if food.time - self.ctx.turn >= 25 or self.ctx.turn + dist > food.time+16:#不找那么远（时间/空间上）的食物
                 continue;
-            if self.item_alloc[food.id] != -1:#不争抢
+            if self.item_alloc[food.id] != -1 or self.assess.check_item_captured_team(food) != -1:#不争抢
                 continue;
-            # if self.ctx.turn + dist < food.time - 10:#不找太近的食物
+            # if self.ctx.turn + dist < food.time - 7:#不找太近的食物
             #     continue;
 
             if dist < best[0]:
@@ -70,9 +69,9 @@ class AI:
             dist = self.assess.dist_map[laser.x][laser.y];
             if dist == -1:
                 continue;
-            if laser.time - self.ctx.turn >= 25 or self.ctx.turn + dist > laser.time+7:#不找那么远（时间/空间上）的食物
+            if laser.time - self.ctx.turn >= 25 or self.ctx.turn + dist > laser.time+16:#不找那么远（时间/空间上）的食物
                 continue;
-            if self.item_alloc[laser.id] != -1:#不争抢
+            if self.item_alloc[laser.id] != -1 or self.assess.check_item_captured_team(laser) != -1:#不争抢
                 continue;
             if dist < best[0]:
                 best = [dist,laser,laser.id];
@@ -113,7 +112,7 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         self.assess = assess.assess(ctx,snake.id);
         self.assess.find_path();
-        form = "turn:%4d %%(levelname)6s 行数%%(lineno)4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
+        form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
         # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
         logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
 

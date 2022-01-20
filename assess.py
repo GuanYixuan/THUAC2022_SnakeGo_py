@@ -67,10 +67,84 @@ class assess:
                     continue;
                 #还没写完
 
-    # def round_action(self,tgt : "tuple[int,int]"):
-    #     """
+    act_score : "list[float]" = [];
+    def scan_act(self):
+        """
+        计算各移动策略的安全系数
+        会撞死的返回-100
+        【特判了len<=2的蛇】
+        """
+        self.__scan_act_bfs();
+        self.__scan_act_vis = [[0 for y in range(self.y_leng)] for x in range(self.x_leng)];
+
+        x,y = self.pos;
+        for i,act in enumerate(ACT):
+            tx = x + act[0];
+            ty = y + act[1];
+            if not self.check_mov_norm(tx,ty):
+                self.act_score[i] = -100;
+                continue;
+            if self.this_snake.get_len() <= 2:
+                self.act_score[i] = 50;
+                continue;
+            self.__scan_act_dfs(tx,ty,i);
+    
+    _scan_act_map : "list[list[int]]";
+    __SCAN_ACT_MAX_DEPTH = 10;
+    __SCAN_ACT_REDUCE_FACTOR = 0.5;
+    def __scan_act_bfs(self):
+        x,y = self.pos;
+        def read_snk_map(nx : int,ny : int) -> int:
+            if (nx,ny) == self.this_snake.coor_list[-1]:#尾巴
+                if self.this_snake.length_bank:
+                    return self.snkid;
+                return -1;
+            return self.ctx.game_map.snake_map[nx][ny];
+        def find_head(nx : int,ny : int) -> float:
+            ans = 1;
+            for i,act in enumerate(ACT):
+                tx = nx + act[0];
+                ty = ny + act[1];
+                if tx < 0 or ty < 0 or tx >= 16 or ty >= 16:
+                    continue;
+                snk = self.ctx.game_map.snake_map[tx][ty];
+                if snk != -1 and snk != self.snkid:
+                    if (tx,ty) == self.ctx.get_snake(snk).coor_list[0]:#是头
+                        ans *= self.__SCAN_ACT_REDUCE_FACTOR;
+            return ans;
         
-    #     """
+        self._scan_act_map = [[-1 for y in range(self.y_leng)] for x in range(self.x_leng)];
+        queue : "list[tuple[int,int,int,float]]" = [];#(x,y,step,val)
+        queue.append((x,y,0,1));
+        
+        while len(queue):
+            x,y,step,val = queue[0];
+            del queue[0];
+            if step >= self.__SCAN_ACT_MAX_DEPTH:
+                continue;
+
+            for i,act in enumerate(ACT):
+                tx,ty = x+act[0],y+act[1];
+                if not self.check_mov_norm(tx,ty,step+1):
+                    continue;
+                heads = find_head(tx,ty);
+                if self._scan_act_map[tx][ty] == -1:
+                    queue.append((tx,ty,step+1,val*heads));
+                    self._scan_act_map[tx][ty] = val*heads;
+    
+    __scan_act_vis : "list[list[int]]";
+    def __scan_act_dfs(self,x : int,y : int,ind : int):
+        self.__scan_act_vis[x][y] = 1;
+        self.act_score[ind] += self._scan_act_map[x][y];
+
+        for i,act in enumerate(ACT):
+            tx = x + act[0];
+            ty = y + act[1];
+            if tx < 0 or ty < 0 or tx >= 16 or ty >= 16:
+                continue;
+            if self._scan_act_map[tx][ty] == -1 or self.__scan_act_vis[tx][ty]:
+                continue;
+            self.__scan_act_dfs(tx,ty,ind);
 
     dist_map : "list[list[int]]";#保存距离，不可达格会是-1
     path_map : "list[list[int]]";#保存“如何走到这一格”，注意这里是ACT的下标，本身格会是-1
@@ -96,12 +170,16 @@ class assess:
         dx,dy = tgt[0]-x,tgt[1]-y;
 
         if dx > 0 and self.check_mov_norm(x+ACT[0][0],y+ACT[0][1]):
+            logging.debug("贪心寻路:%d 目标:(%2d,%2d)" % (0,tgt[0],tgt[1]));
             return 0;
         if dx < 0 and self.check_mov_norm(x+ACT[2][0],y+ACT[2][1]):
+            logging.debug("贪心寻路:%d 目标:(%2d,%2d)" % (2,tgt[0],tgt[1]));
             return 2;
         if dy > 0 and self.check_mov_norm(x+ACT[1][0],y+ACT[1][1]):
+            logging.debug("贪心寻路:%d 目标:(%2d,%2d)" % (1,tgt[0],tgt[1]));
             return 1;
         if dy < 0 and self.check_mov_norm(x+ACT[3][0],y+ACT[3][1]):
+            logging.debug("贪心寻路:%d 目标:(%2d,%2d)" % (3,tgt[0],tgt[1]));
             return 3;
         return self.random_step();
     def emergency_handle(self) -> int:
@@ -136,17 +214,31 @@ class assess:
             return vaild[0];
         logging.debug("紧急处理:%d" % best[1]);
         return best[1];
-
-    def check_item_captured(self,item : Item) -> bool:
+    
+    def check_item_captured_team(self,item : Item) -> int:
         """
-        检查物品是否已经被你占住了（可以用身子直接吃掉）
+        检查物品是否被哪方的蛇占住了（可以用身子直接吃掉），没有则返回-1
         """
         x,y = item.x,item.y;
-        if self.ctx.game_map.snake_map[x][y] != self.snkid:
+        if self.ctx.game_map.snake_map[x][y] == -1:
+            return -1;
+        if self.check_item_captured(item,self.ctx.game_map.snake_map[x][y]):
+            return self.ctx.get_snake(self.ctx.game_map.snake_map[x][y]).camp;
+        return -1;
+    def check_item_captured(self,item : Item,snkid : int = -1) -> bool:
+        """
+        检查物品是否已经被snkid的蛇占住了（可以用身子直接吃掉）
+        """
+        x,y = item.x,item.y;
+        if snkid == -1:
+            snkid = self.snkid;
+
+        if self.ctx.game_map.snake_map[x][y] != snkid:
             return False;
-        for i,pos in enumerate(self.this_snake.coor_list):
+        snk = self.ctx.get_snake(snkid);
+        for i,pos in enumerate(snk.coor_list):
             if pos == (x,y):
-                if item.time - self.ctx.turn < self.this_snake.get_len()-i + self.this_snake.length_bank:
+                if item.time - self.ctx.turn < snk.get_len()-i + snk.length_bank:
                     return True;
                 else:
                     return False;
@@ -168,12 +260,12 @@ class assess:
             rev = self.rev_step(self.path_map[x][y]);
             x += ACT[rev][0];
             y += ACT[rev][1];
-        logging.debug("寻路:%d" % self.rev_step(rev));
+        logging.debug("寻路:%d 目标:(%d,%d)" % (self.rev_step(rev),tgt[0],tgt[1]));
         return self.rev_step(rev);
     def find_path(self):
         """
         跑一次从snkid所在位置到全图的bfs
-        这里认为所有蛇是静态的
+        这里认为所有蛇的头是静态的
         """
         nx,ny = self.ctx.get_snake(self.snkid).coor_list[0];
 
@@ -190,16 +282,24 @@ class assess:
 
             for i,act in enumerate(ACT):
                 tx,ty = x+act[0],y+act[1];
-                if not self.check_mov_norm(tx,ty):#认为所有蛇是静态的
+                if not self.check_mov_norm(tx,ty,step+1):
                     continue;
                 if self.dist_map[tx][ty] == -1:
                     queue.append((tx,ty,step+1));
                     self.path_map[tx][ty] = i;
                     self.dist_map[tx][ty] = step+1;
 
-    def check_mov_norm(self,tx : int,ty : int) -> bool:
+    def get_pos_on_snake(self,pos : "tuple[int,int]") -> int:
+        x,y = pos;
+        snkid = self.ctx.game_map.snake_map[x][y];
+        snk = self.ctx.get_snake(snkid);
+        for i,_pos in enumerate(snk.coor_list):
+            if pos == _pos:
+                return len(snk.coor_list)-i;
+
+    def check_mov_norm(self,tx : int,ty : int,time : int = 0) -> bool:
         """
-        判断【立刻】走到(tx,ty)是否可行（不会被撞死）
+        判断在time时间后走到(tx,ty)是否可行（不会被撞死）
         """
         #越界/撞墙
         if tx < 0 or ty < 0 or tx >= 16 or ty >= 16 or self.ctx.game_map.wall_map[tx][ty] != -1:
@@ -208,11 +308,11 @@ class assess:
         if self.ctx.get_snake(self.snkid).get_len() == 2:
             if self.ctx.game_map.snake_map[tx][ty] == self.snkid and self.ctx.get_snake(self.snkid).length_bank == 0:
                 return True;
-            if self.ctx.game_map.snake_map[tx][ty] != -1:
+            if self.ctx.game_map.snake_map[tx][ty] != -1 and self.get_pos_on_snake((tx,ty)) >= time:
                 return False;
             return True;
         else:
-            if self.ctx.game_map.snake_map[tx][ty] != -1:
+            if self.ctx.game_map.snake_map[tx][ty] != -1 and self.get_pos_on_snake((tx,ty)) >= time:
                 return False;
             return True;
 
