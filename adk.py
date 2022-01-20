@@ -553,7 +553,7 @@ class Client:
         logging.debug('Sending data: ' + str(data))
         msg = data.to_bytes(1, byteorder='big', signed=False)
         if data < 1 or data > 6:
-            raise RuntimeError("Illegal Operation")
+            raise RuntimeError("Illegal Operation" + str(data));
         len_byte = len(msg).to_bytes(4, 'big', signed=True)
         msg_byte = len_byte + msg
         if self.__local:

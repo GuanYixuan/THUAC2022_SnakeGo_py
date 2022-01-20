@@ -1,1 +1,6 @@
 demos
+
+__pycache__
+*.pyc
+
+ai.zip

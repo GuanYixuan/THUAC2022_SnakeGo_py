@@ -1,4 +1,5 @@
-from adk import *
+import assess;
+from adk import *;
 
 # written by lbr
 
@@ -13,60 +14,16 @@ SEARCH_LIMIT = 100
 
 
 class AI:
-    """
-    This AI proceeds according to following rules:
-
-    The first snake is active, all other snakes split by the first snake are passive.
-
-    An active snake will act according to self.active_strategy.
-
-    A passive snake will act according to self.passive_strategy.
-
-    Check those functions for detail.
-    """
     ctx : Context = None;
     snake : Snake = None;
+    assess : "assess.assess";
+    wanted_item : "dict[int,Item]" = dict();#(蛇id:物品)
     order : "dict[int,tuple[int,int]]" = dict();
 
     def __init__(self):
         self.ctx = None
         self.snake = None
         self.order = dict()
-
-    def check(self, op : int):
-        """
-        :param op: the direction
-        :return: True if this move is legal and will not result in solidification.
-                 False otherwise.
-        """
-        x = self.snake.coor_list[0][0] + dx[op]
-        y = self.snake.coor_list[0][1] + dy[op]
-        if x < 0 or y < 0 or x >= 16 or y >= 16 or self.ctx.game_map.wall_map[x][y] != -1:
-            return False
-        # check wall and out of bounds
-        if self.snake.get_len() > 1 and x == self.snake.coor_list[1][0] and y == self.snake.coor_list[1][1]:
-            return False
-        # check turn back
-        if self.ctx.game_map.snake_map[x][y] != -1:
-            return False
-        # check other snake
-        return True
-
-    def check_self(self, op : int):
-        """
-        :param op: the direction
-        :return: True if this move is legal, could possibly result in solidification.
-                 False otherwise.
-        """
-        x = self.snake.coor_list[0][0] + dx[op]
-        y = self.snake.coor_list[0][1] + dy[op]
-        if x < 0 or y < 0 or x >= 16 or y >= 16 or self.ctx.game_map.wall_map[x][y] != -1:
-            return False
-        if self.snake.get_len() > 1 and x == self.snake.coor_list[1][0] and y == self.snake.coor_list[1][1]:
-            return False
-        if self.ctx.game_map.snake_map[x][y] != -1 and self.ctx.game_map.snake_map[x][y] != self.snake.id:
-            return False
-        return True
 
     def closest_food_strategy(self):
         """
@@ -132,44 +89,45 @@ class AI:
 
         return val[i]
 
-    def active_strategy(self):
-        """
-        Strategy for the active snake. Split whenever limit is reached.
-        Fire whenever possible. Otherwise search for food.
-        """
-        if len(self.snake.coor_list) >= SPLIT_LIMIT:
-            return 6
-        elif len(self.snake.item_list) > 0 and len(self.snake.coor_list) > 1:
-            return 5
-        else:
-            return self.closest_food_strategy() + 1
+    def find_food(self) -> Item:#找一个食物
+        best = [1e8,-1,-1];#[dist,Item,ind]
+        for ind,food in enumerate(self.ctx.game_map.item_list):
+            if food.type != 0 or food.gotten_time != -1 or self.ctx.turn >= food.time + 16:#只找还没被吃的食物
+                continue;
+            dist = self.assess.dist_map[food.x][food.y];
+            if dist == -1:
+                continue;
+            if food.time - self.ctx.turn >= 25 or self.ctx.turn + dist > food.time+7:#不找那么远（时间/空间上）的食物
+                continue;
+            if self.ctx.turn + dist < food.time - 10:#不找太近的食物
+                continue;
 
-    def solidify_strategy(self):
-        """
-        Try to solidify self by forming a 2 * 2 area.
-        It requires at most 4 move to solidify.
+            if dist < best[0]:
+                best = [dist,food,ind];
+        if best[2] == -1:
+            return -1;
+        return best[1];
 
-        :return: direction to move
-        """
-        if self.snake.id in self.order:
-            rk, order = self.order[self.snake.id]
-            self.order[self.snake.id] = rk + 1, order
-            return order[rk] % 4
-            # not the first move, follow the previous move
-        else:
-            for i in range(4):
-                if self.check_self(i):
-                    order = [i, i + 1, i + 2, i + 3]
-                    self.order.update({self.snake.id: (1, order)})
-                    return i % 4
-            # the first move, choose a legal direction at store it in self.order
-            return 0
-
-    def passive_strategy(self):
-        """
-        Strategy for other snake. Always solidify.
-        """
-        return self.solidify_strategy() + 1
+    def eat_strategy(self) -> int:
+        if self.wanted_item.get(self.snake.id,-1) == -1:
+            self.wanted_item[self.snake.id] = self.find_food();
+            if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
+                return self.assess.random_step();
+        
+        reget_food = False;
+        food = self.wanted_item[self.snake.id];
+        if food.gotten_time != -1 or self.ctx.turn >= food.time + 16:
+            reget_food = True;
+        if self.assess.check_item_captured(food):
+            reget_food = True;
+        
+        if reget_food:
+            self.wanted_item[self.snake.id] = self.find_food();
+            if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
+                return self.assess.random_step();
+        
+        op = self.assess.find_first((food.x,food.y));
+        return op;
 
     def judge(self, snake : Snake, ctx : Context):
         """
@@ -177,12 +135,11 @@ class AI:
         :param ctx: current context
         :return: the decision
         """
-        self.ctx = ctx;
-        self.snake = snake;
-        if snake.id == 0 or snake.id == 1:
-            return self.active_strategy();
-        else:
-            return self.passive_strategy();
+        self.ctx,self.snake = ctx,snake;
+        self.assess = assess.assess(ctx,snake.id);
+        self.assess.find_path();
+        return self.eat_strategy()+1;
+        
 
 
 def run():
