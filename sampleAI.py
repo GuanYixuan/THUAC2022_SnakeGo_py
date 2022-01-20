@@ -17,80 +17,33 @@ class AI:
     ctx : Context = None;
     snake : Snake = None;
     assess : "assess.assess";
+    item_alloc : "list[int]";
     wanted_item : "dict[int,Item]" = dict();#(蛇id:物品)
     order : "dict[int,tuple[int,int]]" = dict();
 
     def __init__(self):
         self.ctx = None
         self.snake = None
-        self.order = dict()
+        self.order = dict();
+        self.item_alloc = [-1 for i in range(512)];
 
-    def closest_food_strategy(self):
-        """
-        Search for the closest food and to go that direction, if legal.
+    def try_split(self) -> bool:
+        if self.snake.get_len() > 22 and self.ctx.get_snake_count(self.ctx.current_player) < 4:
+            logging.debug("主动分裂，长度%d" % self.snake.get_len());
+            return True;
+        return False;
 
-        :return: the chosen direction
-        """
-        def calc_dist(x1 : int, y1 : int, x2 : int, y2 : int) -> "tuple[int,int]":
-            """
-            Calculate the Manhattan distance between snake head and item.
-            And find the possible direction to the item, at most 2.
+    def try_shoot(self) -> bool:
+        if not self.assess.can_shoot():
+            return False;
+        ass = self.assess.ray_trace_self();
+        if ass[1]-ass[0] >= 2:
+            logging.debug("发射激光，击毁(%d,%d)" % ass);
+            return True;
+        return False;
 
-            :return: (dist, possible_direction)
-            """
-            pos = []
-            if x1 > x2:
-                pos.append(0)
-            if x1 < x2:
-                pos.append(2)
-            if y1 > y2:
-                pos.append(1)
-            if y1 < y2:
-                pos.append(3)
-            return abs(x1 - x2) + abs(y1 - y2), pos
-
-        valid = []
-        for i in range(4):
-            if self.check(i):
-                valid.append(i)
-        if len(valid) == 0:
-            if self.snake.get_len() > 1 and self.snake.coor_list[0][0] + dx[0] == self.snake.coor_list[1][0] and self.snake.coor_list[0][1] + dy[0] == self.snake.coor_list[1][1]:
-                return 1
-            return 0
-        # calculate the legal moves without concerning the food
-
-        coor = self.snake.coor_list
-        dist, val = INF, []
-        for item in self.ctx.game_map.item_list:
-            if item.type != 0:
-                continue
-            # search food only
-
-            if item.time > self.ctx.turn + SEARCH_LIMIT or item.time + item.param < self.ctx.turn:
-                continue
-            # search valid food only
-
-            d, pos = calc_dist(item.x, item.y, coor[0][0], coor[0][1])
-            pos = [i for i in pos if i in valid]
-            # use legal move only
-
-            if len(pos) > 0 and d < dist and \
-                    d + self.ctx.turn <= item.time + item.param <= d + self.ctx.turn + SPLIT_LIMIT / 2:
-                dist, val = d, pos
-            # search reachable food only
-            # not that the span of a snake is at least SPLIT_LIMIT / 2
-
-        # chose the closest reachable food and use legal move
-
-        if len(val) == 0:
-            val = valid
-        i = random.randint(0, len(val) - 1)
-        # randomly chose one if multiple available
-
-        return val[i]
-
-    def find_food(self) -> Item:#找一个食物
-        best = [1e8,-1,-1];#[dist,Item,ind]
+    def find_tgt(self) -> Item:#找一个东西
+        best = [1e8,-1,-1];#[dist,Item,id]
         for ind,food in enumerate(self.ctx.game_map.item_list):
             if food.type != 0 or food.gotten_time != -1 or self.ctx.turn >= food.time + 16:#只找还没被吃的食物
                 continue;
@@ -99,19 +52,40 @@ class AI:
                 continue;
             if food.time - self.ctx.turn >= 25 or self.ctx.turn + dist > food.time+7:#不找那么远（时间/空间上）的食物
                 continue;
-            if self.ctx.turn + dist < food.time - 10:#不找太近的食物
+            if self.item_alloc[food.id] != -1:#不争抢
                 continue;
+            # if self.ctx.turn + dist < food.time - 10:#不找太近的食物
+            #     continue;
 
             if dist < best[0]:
-                best = [dist,food,ind];
-        if best[2] == -1:
-            return -1;
-        return best[1];
+                best = [dist,food,food.id];
+        if best[2] != -1:
+            self.item_alloc[best[2]] = self.snake.id;
+            return best[1];
+        
+        best = [1e8,-1,-1];#[dist,Item,id]
+        for ind,laser in enumerate(self.ctx.game_map.item_list):
+            if laser.type != 2 or laser.gotten_time != -1 or self.ctx.turn >= laser.time + 16:#只找还没被吃的激光
+                continue;
+            dist = self.assess.dist_map[laser.x][laser.y];
+            if dist == -1:
+                continue;
+            if laser.time - self.ctx.turn >= 25 or self.ctx.turn + dist > laser.time+7:#不找那么远（时间/空间上）的食物
+                continue;
+            if self.item_alloc[laser.id] != -1:#不争抢
+                continue;
+            if dist < best[0]:
+                best = [dist,laser,laser.id];
+        if best[2] != -1:
+            self.item_alloc[best[2]] = self.snake.id;
+            return best[1];
+        return -1;
 
     def eat_strategy(self) -> int:
         if self.wanted_item.get(self.snake.id,-1) == -1:
-            self.wanted_item[self.snake.id] = self.find_food();
+            self.wanted_item[self.snake.id] = self.find_tgt();
             if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
+                logging.debug("未找到目标");
                 return self.assess.random_step();
         
         reget_food = False;
@@ -122,7 +96,8 @@ class AI:
             reget_food = True;
         
         if reget_food:
-            self.wanted_item[self.snake.id] = self.find_food();
+            self.wanted_item[self.snake.id] = self.find_tgt();
+            logging.debug("重载目标:%s" % self.wanted_item[self.snake.id]);
             if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
                 return self.assess.random_step();
         
@@ -138,6 +113,14 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         self.assess = assess.assess(ctx,snake.id);
         self.assess.find_path();
+        form = "turn:%4d %%(levelname)6s 行数%%(lineno)4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
+        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
+
+        if self.try_shoot():
+            return 5;
+        if self.try_split():
+            return 6;
         return self.eat_strategy()+1;
         
 
@@ -175,7 +158,7 @@ def run():
             while controller.next_snake != -1:
                 current_snake = controller.current_snake_list[controller.next_snake][0]
                 op = ai.judge(current_snake, controller.ctx)  # TODO: Complete the Judge Function
-                logging.debug(str(op))
+                # logging.debug(str(op))
                 if not controller.apply(op):
                     pass
                     # raise RuntimeError("Illegal Action!!!")

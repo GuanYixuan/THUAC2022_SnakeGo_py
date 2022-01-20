@@ -1,5 +1,3 @@
-import re
-from tabnanny import check
 from adk import *
 
 ACT = ((1,0),(0,1),(-1,0),(0,-1));
@@ -87,7 +85,7 @@ class assess:
         random.shuffle(ind);
         for i in ind:
             if self.check_mov_norm(x+ACT[i][0],y+ACT[i][1]):
-                print("随机漫步:",i);
+                logging.debug("随机漫步:%d" % i);
                 return i;
         return self.emergency_handle();
     def greedy_step(self,tgt : "tuple[int,int]"):
@@ -107,14 +105,13 @@ class assess:
             return 3;
         return self.random_step();
     def emergency_handle(self) -> int:
-        print("emergency!");
         def calc_leng(tgt : "tuple[int,int]") -> int:#不见得是严格的长度
             for i,pos in enumerate(self.this_snake.coor_list):
                 if pos == tgt:
                     return i;
             raise;
         if self.ctx.get_snake_count(self.ctx.current_player) < 4:
-            print("紧急处理:分裂");
+            logging.debug("紧急处理:分裂");
             return 6 - 1;#分裂
         
         vaild = [];
@@ -129,13 +126,15 @@ class assess:
                 continue;
             if self.this_snake.get_len() > 2 and (tx,ty) == self.this_snake.coor_list[1]:#防止后退
                 continue;
+            if self.this_snake.get_len() == 2 and (tx,ty) == self.this_snake.coor_list[1]:#防止后退
+                continue;
             leng = calc_leng((tx,ty));
             if leng > best[0]:
                 best = [leng,i];
         if best[1] == -9:
-            print("紧急处理:",vaild[0]);
+            logging.debug("紧急处理:%d(防倒车)" % vaild[0]);
             return vaild[0];
-        print("紧急处理:",best[1]);
+        logging.debug("紧急处理:%d" % best[1]);
         return best[1];
 
     def check_item_captured(self,item : Item) -> bool:
@@ -169,7 +168,7 @@ class assess:
             rev = self.rev_step(self.path_map[x][y]);
             x += ACT[rev][0];
             y += ACT[rev][1];
-        print("寻路:",self.rev_step(rev));
+        logging.debug("寻路:%d" % self.rev_step(rev));
         return self.rev_step(rev);
     def find_path(self):
         """
@@ -217,20 +216,45 @@ class assess:
                 return False;
             return True;
 
-    # def check_self(self, op : int):
-    #     """
-    #     :param op: the direction
-    #     :return: True if this move is legal, could possibly result in solidification.
-    #              False otherwise.
-    #     """
-    #     x = self.snake.coor_list[0][0] + dx[op]
-    #     y = self.snake.coor_list[0][1] + dy[op]
-    #     if x < 0 or y < 0 or x >= 16 or y >= 16 or self.ctx.game_map.wall_map[x][y] != -1:
-    #         return False
-    #     if self.snake.get_len() > 1 and x == self.snake.coor_list[1][0] and y == self.snake.coor_list[1][1]:
-    #         return False
-    #     if self.ctx.game_map.snake_map[x][y] != -1 and self.ctx.game_map.snake_map[x][y] != self.snake.id:
-    #         return False
-    #     return True
+    def has_laser(self,snkid : int = -1) -> bool:
+        if snkid == -1:
+            snkid = self.snkid;
+        for _item in self.ctx.get_snake(snkid).item_list:#或许检查item_list是否为空即可
+            if _item.type == 2:
+                return True;
+        return False;
+    def can_shoot(self,snkid : int = -1) -> bool:
+        '''
+        判断当前蛇能不能shoot
+        '''
+        if snkid == -1:
+            snkid = self.snkid;
+        if self.ctx.get_snake(snkid).get_len() < 2 or (not self.has_laser(snkid)):
+            return False
+        return True;
+    def ray_trace_self(self) -> "tuple[int,int]":
+        '''
+        如果当前蛇立即发射激光，会打掉多少(自己，对方)的墙？
+        对长度为1的蛇返回(-1,-1)
+        '''
+        if self.this_snake.get_len() == 1:
+            return (-1,-1);
+        pos0,pos1 = self.this_snake.coor_list[0],self.this_snake.coor_list[1];
+        return self.ray_trace(pos0,(pos0[0]-pos1[0],pos0[1]-pos1[1]));
 
-    
+    def ray_trace(self,pos : "tuple[int,int]",dire : "tuple[int,int]") -> "tuple[int,int]":
+        '''
+        从pos向dire向量方向发射激光，会打掉多少(自己，对方)的墙？
+        '''
+        ans = [0,0];
+        tx,ty = pos;
+        while tx >= 0 and ty >= 0 and tx < 16 and ty < 16:
+            wall = self.ctx.game_map.wall_map[tx][ty];
+            if wall != -1:
+                if wall == self.ctx.current_player:
+                    ans[0] += 1;
+                else:
+                    ans[1] += 1;
+            tx += dire[0];
+            ty += dire[1];
+        return (ans[0],ans[1]);

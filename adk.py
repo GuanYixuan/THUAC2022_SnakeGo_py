@@ -46,6 +46,11 @@ class Item:
         self.gotten_time = -1
         Item.item_num += 1
 
+    def __str__(self) -> str:
+        if self.type == 0:
+            return " [(%3d->%3d)在(%2d,%2d)处的参数%d食物]" % (self.time,self.time+16,self.x,self.y,self.param);
+        else:
+            return " [(%3d->%3d)在(%2d,%2d)处的激光]" % (self.time,self.time+16,self.x,self.y);
 
 @dataclass(init=False)
 class GameConfig:
@@ -491,8 +496,8 @@ class Client:
     __local = False
 
     def __init__(self):
-        logging.basicConfig(format='%(levelname)s:[ADK.%(module)s:%(lineno)d]: %(message)s', stream=sys.stderr,
-                            level=logging.ERROR)
+        # logging.basicConfig(format='%(levelname)s:[ADK.%(module)s:%(lineno)d]: %(message)s', stream=sys.stderr,
+        #                     level=logging.ERROR)
         if len(sys.argv) == 1:
             self.__local = False
         elif len(sys.argv) == 3:
@@ -550,7 +555,7 @@ class Client:
             return [type]
 
     def send_data(self, data):
-        logging.debug('Sending data: ' + str(data))
+        # logging.debug('Sending data: ' + str(data))
         msg = data.to_bytes(1, byteorder='big', signed=False)
         if data < 1 or data > 6:
             raise RuntimeError("Illegal Operation" + str(data));
