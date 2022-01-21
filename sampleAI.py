@@ -1,17 +1,6 @@
 import assess;
 from adk import *;
 
-# written by lbr
-
-dx = [1, 0, -1, 0]
-dy = [0, 1, 0, -1]
-INF = 100000000;
-# constants
-
-SPLIT_LIMIT = 10
-SEARCH_LIMIT = 100
-# tunable parameters
-
 class AI:
     ctx : Context = None;
     snake : Snake = None;
@@ -43,38 +32,38 @@ class AI:
 
     def find_tgt(self) -> Item:#找一个东西
         best = [1e8,-1,-1];#[dist,Item,id]
-        for ind,food in enumerate(self.ctx.game_map.item_list):
-            if food.type != 0 or food.gotten_time != -1 or self.ctx.turn >= food.time + 16:#只找还没被吃的食物
+        for ind,item in enumerate(self.ctx.game_map.item_list):
+            if item.type != 0 or item.gotten_time != -1 or self.ctx.turn >= item.time + 16:#只找还没被吃的食物
                 continue;
-            dist = self.assess.dist_map[food.x][food.y];
+            dist = self.assess.dist_map[item.x][item.y];
             if dist == -1:
                 continue;
-            if food.time - self.ctx.turn >= 25 or self.ctx.turn + dist > food.time+16:#不找那么远（时间/空间上）的食物
+            if item.time - self.ctx.turn >= 25 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
                 continue;
-            if self.item_alloc[food.id] != -1 or self.assess.check_item_captured_team(food) != -1:#不争抢
+            if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
                 continue;
-            # if self.ctx.turn + dist < food.time - 7:#不找太近的食物
+            # if self.ctx.turn + dist < item.time - 7:#不找太近的食物
             #     continue;
 
             if dist < best[0]:
-                best = [dist,food,food.id];
+                best = [dist,item,item.id];
         if best[2] != -1:
             self.item_alloc[best[2]] = self.snake.id;
             return best[1];
         
         best = [1e8,-1,-1];#[dist,Item,id]
-        for ind,laser in enumerate(self.ctx.game_map.item_list):
-            if laser.type != 2 or laser.gotten_time != -1 or self.ctx.turn >= laser.time + 16:#只找还没被吃的激光
+        for ind,item in enumerate(self.ctx.game_map.item_list):
+            if item.type != 2 or item.gotten_time != -1 or self.ctx.turn >= item.time + 16:#只找还没被吃的激光
                 continue;
-            dist = self.assess.dist_map[laser.x][laser.y];
+            dist = self.assess.dist_map[item.x][item.y];
             if dist == -1:
                 continue;
-            if laser.time - self.ctx.turn >= 25 or self.ctx.turn + dist > laser.time+16:#不找那么远（时间/空间上）的食物
+            if item.time - self.ctx.turn >= 25 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
                 continue;
-            if self.item_alloc[laser.id] != -1 or self.assess.check_item_captured_team(laser) != -1:#不争抢
+            if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
                 continue;
             if dist < best[0]:
-                best = [dist,laser,laser.id];
+                best = [dist,item,item.id];
         if best[2] != -1:
             self.item_alloc[best[2]] = self.snake.id;
             return best[1];
@@ -87,20 +76,21 @@ class AI:
                 logging.debug("未找到目标");
                 return self.assess.random_step();
         
-        reget_food = False;
-        food = self.wanted_item[self.snake.id];
-        if food.gotten_time != -1 or self.ctx.turn >= food.time + 16:
-            reget_food = True;
-        if self.assess.check_item_captured(food):
-            reget_food = True;
+        reget_item = False;
+        item = self.wanted_item[self.snake.id];
+        if item.gotten_time != -1 or self.ctx.turn >= item.time + 16:
+            reget_item = True;
+        if self.assess.check_item_captured_team(item) != -1:
+            reget_item = True;
         
-        if reget_food:
+        if reget_item:
             self.wanted_item[self.snake.id] = self.find_tgt();
             logging.debug("重载目标:%s" % self.wanted_item[self.snake.id]);
             if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
                 return self.assess.random_step();
-        
-        op = self.assess.find_first((food.x,food.y));
+
+        item = self.wanted_item[self.snake.id];
+        op = self.assess.find_first((item.x,item.y));
         return op;
 
     def judge(self, snake : Snake, ctx : Context):
@@ -110,11 +100,13 @@ class AI:
         :return: the decision
         """
         self.ctx,self.snake = ctx,snake;
-        self.assess = assess.assess(ctx,snake.id);
-        self.assess.find_path();
+        
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
         # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
-        logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
+        # logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
+        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+
+        self.assess = assess.assess(self,ctx,snake.id);
 
         if self.try_shoot():
             return 5;
@@ -181,4 +173,5 @@ def run():
                 controller.apply(op[0])
         current_player = 1 - current_player
     while True:
+        time.sleep(1);
         pass
