@@ -48,7 +48,7 @@ class Item:
 
     def __str__(self) -> str:
         if self.type == 0:
-            return " [(%3d->%3d)在(%2d,%2d)处的参数%d食物]" % (self.time,self.time+16,self.x,self.y,self.param);
+            return " [(%3d->%3d)在(%2d,%2d)处的参数%d食物] id:%d,%d" % (self.time,self.time+16,self.x,self.y,self.param,self.id,Item.item_num);
         else:
             return " [(%3d->%3d)在(%2d,%2d)处的激光]" % (self.time,self.time+16,self.x,self.y);
 

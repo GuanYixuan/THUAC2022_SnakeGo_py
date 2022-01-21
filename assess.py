@@ -277,6 +277,7 @@ class assess:
                 return False;
         raise;
     
+    attack_score : "list[float]";
     polite_score : "list[float]";
     __1_AIR_SCORE = -5;
     __NO_AIR_SCORE = -10;
@@ -365,7 +366,7 @@ class assess:
                     return False;
         raise;
 
-    __BFS_DIRECTION_SCORE = 4;
+    __BFS_DIRECTION_SCORE = 6;
     def find_first(self,tgt : "tuple[int,int]"):
         """
         倒推走向tgt的第一步应该怎么走，返回的是ACT的下标
@@ -390,7 +391,7 @@ class assess:
             else:
                 bfs_list.append((i,self.polite_score[i]));
         bfs_list.sort(key=self.sort_key,reverse=True);
-        
+
         if bfs_list[0][0] != self.rev_step(rev):
             logging.debug("寻路[避让]:%d 目标:(%d,%d)" % (self.rev_step(rev),tgt[0],tgt[1]));
             return bfs_list[0][0];
@@ -430,6 +431,10 @@ class assess:
         for i,_pos in enumerate(snk.coor_list):
             if pos == _pos:
                 return len(snk.coor_list)-i;
+    # def _get_enclosing_leng(self,snkid : int = -1) -> "tuple[int,int]":
+    #     """
+    #     计算id=snkid的蛇立刻主动进行固化能利用的最大身体长度
+    #     """
 
     def check_mov_norm(self,tx : int,ty : int,time : int = 0,snkid : int = -1) -> bool:
         """
