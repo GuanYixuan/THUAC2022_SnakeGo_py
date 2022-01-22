@@ -9,6 +9,8 @@ class AI:
     wanted_item : "dict[int,Item]" = dict();#(蛇id:物品)
     order : "dict[int,tuple[int,int]]" = dict();
 
+    __first_mission = 0;
+
     def __init__(self):
         self.ctx = None
         self.snake = None
@@ -16,7 +18,13 @@ class AI:
         self.item_alloc = [-1 for i in range(512)];
 
     def try_split(self) -> bool:
-        if self.snake.get_len() > 18 and self.ctx.get_snake_count(self.ctx.current_player) < 4:
+        if self.snake.get_len() > 17 and self.ctx.get_snake_count(self.ctx.current_player) < 4 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
+            logging.debug("主动分裂，长度%d" % self.snake.get_len());
+            return True;
+        if self.snake.get_len() > 15 and self.ctx.get_snake_count(self.ctx.current_player) < 3 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
+            logging.debug("主动分裂，长度%d" % self.snake.get_len());
+            return True;
+        if self.snake.get_len() > 13 and self.ctx.get_snake_count(self.ctx.current_player) < 2 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
             logging.debug("主动分裂，长度%d" % self.snake.get_len());
             return True;
         return False;
@@ -86,6 +94,10 @@ class AI:
         if reget_item:
             self.wanted_item[self.snake.id] = self.find_tgt();
             logging.debug("重载目标:%s" % self.wanted_item[self.snake.id]);
+            if not self.__first_mission:
+               self. __first_mission = 1;
+               if self.assess.can_split():
+                   return 6 - 1;
             if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
                 return self.assess.random_step();
 
@@ -102,9 +114,9 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
         # logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
-        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
 
