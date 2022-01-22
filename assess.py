@@ -174,7 +174,7 @@ class assess:
         x,y = self.pos;
         random_list : "list[tuple[int,float]]" = [];
         for i in range(len(ACT)):
-            random_list.append((i,self.polite_score[i]));
+            random_list.append((i,self.polite_score[i]+self.attack_score[i]));
         random_list.sort(key=self.sort_key,reverse=True);
 
         if random_list[0][1] < -80:
@@ -187,7 +187,7 @@ class assess:
         '''
         x,y =  self.pos;
         dx,dy = tgt[0]-x,tgt[1]-y;
-        greedy_score = [-100,-100,-100,-100];
+        greedy_score = [0,0,0,0];
         greedy_list : "list[tuple[int,float]]" = [];
 
         if dx > 0 and self.check_mov_norm(x+ACT[0][0],y+ACT[0][1]):
@@ -200,7 +200,7 @@ class assess:
             greedy_score[3] = self.__GREEDY_DIRECTION_SCORE;
         
         for i in range(len(ACT)):
-            greedy_score[i] += self.polite_score[i];
+            greedy_score[i] += self.polite_score[i] + self.attack_score[i];
             greedy_list.append((i,greedy_score[i]));
         
         greedy_list.sort(key=self.sort_key,reverse=True);
@@ -279,14 +279,19 @@ class assess:
     
     attack_score : "list[float]";
     polite_score : "list[float]";
-    __1_AIR_SCORE = -5;
-    __NO_AIR_SCORE = -10;
+    __POLITE_1_AIR_PARAM = [-4,-0.4];
+    __POLITE_NO_AIR_PARAM = [-8,-1];
+    __ATTACK_1_AIR_MULT = 0.3;
+    __ATTACK_NO_AIR_MULT = 0.6;
+    __SMALL_SNAKE_ATTACK_GAIN = [0,1.2,1.5];
     def calc_polite_score(self):
         """
-        计算“谦让值”，某一个act将队友的“气”挤压到小于2，则该值减小
+        计算“谦让值”与“攻击值”
+        某一个act将队友的“气”挤压到小于2，则polite_score减小；若是对手，则attack_score加大
         """
         x,y = self.pos;
         self.polite_score = [-100,-100,-100,-100];
+        self.attack_score = [-100,-100,-100,-100];
 
         for i,act in enumerate(ACT):
             tx = x + act[0];
@@ -295,6 +300,7 @@ class assess:
             if not self.check_mov_norm(tx,ty,0):
                 continue;
             self.polite_score[i] = 0;
+            self.attack_score[i] = 0;
 
             extra_go = (-1,-1);
             if not self.this_snake.length_bank:
@@ -303,15 +309,31 @@ class assess:
             for _friend in self.ctx.snake_list:
                 if _friend.camp != self.this_snake.camp or _friend.id == self.snkid:
                     continue;
-                curr = self.calc_friend_air(_friend.coor_list[0]);
-                ftr = self.calc_friend_air(_friend.coor_list[0],(tx,ty),extra_go);
+                curr = self.calc_snk_air(_friend.coor_list[0]);
+                ftr = self.calc_snk_air(_friend.coor_list[0],(tx,ty),extra_go);
                 if ftr < curr and ftr == 1:
-                    self.polite_score[i] += self.__1_AIR_SCORE;
+                    self.polite_score[i] += self.__POLITE_1_AIR_PARAM[0] + (_friend.get_len()+_friend.length_bank) * self.__POLITE_1_AIR_PARAM[1];
                 if ftr < curr and ftr == 0:
-                    self.polite_score[i] += self.__NO_AIR_SCORE;
-        logging.debug("polite_score:%s" % self.polite_score);
+                    self.polite_score[i] += self.__POLITE_NO_AIR_PARAM[0] + (_friend.get_len()+_friend.length_bank) * self.__POLITE_NO_AIR_PARAM[1];
+            
+            for _enemy in self.ctx.snake_list:
+                if _enemy.camp == self.this_snake.camp:
+                    continue;
+                curr = self.calc_snk_air(_enemy.coor_list[0]);
+                ftr = self.calc_snk_air(_enemy.coor_list[0],(tx,ty),extra_go);
+                if ftr < curr and ftr == 1:
+                    self.attack_score[i] += (_enemy.get_len() + _enemy.length_bank) * self.__ATTACK_1_AIR_MULT;
+                if ftr < curr and ftr == 0:
+                    self.attack_score[i] += (_enemy.get_len() + _enemy.length_bank) * self.__ATTACK_NO_AIR_MULT;
+            
+            for i in range(len(ACT)):
+                if self.this_snake.get_len() + self.this_snake.length_bank <= 2:
+                    self.attack_score[i] *= self.__SMALL_SNAKE_ATTACK_GAIN[self.this_snake.get_len() + self.this_snake.length_bank];
 
-    def calc_friend_air(self,pos : "tuple[int,int]",extra_block : "tuple[int,int]" = (-1,-1),extra_go : "tuple[int,int]" = (-1,-1)) -> int:
+        logging.debug("polite_score:%s" % self.polite_score);
+        logging.debug("attack_score:%s" % self.attack_score);
+
+    def calc_snk_air(self,pos : "tuple[int,int]",extra_block : "tuple[int,int]" = (-1,-1),extra_go : "tuple[int,int]" = (-1,-1)) -> int:
         """
         计算当前位于pos的【队友】蛇头有几个方向可走
         可添加一个额外堵塞位置extra_block及一个额外可行位置extra_go
@@ -320,14 +342,19 @@ class assess:
         ans = 0;
         x,y = pos;
         snkid = self.ctx.game_map.snake_map[x][y];
+        camp = self.ctx.get_snake(snkid).camp;
+        extra_time = 1;
+        if camp == self.ctx.current_player:
+            extra_time = 0;
         for i,act in enumerate(ACT):
             tx = x + act[0];
             ty = y + act[1];
 
             if (tx,ty) == extra_block:
                 continue;
-            if self.check_mov_norm(tx,ty,0,snkid):
+            if self.check_mov_norm(tx,ty,extra_time,snkid):
                 #【默认顺序是"对手们"--"你"--"队友"，故time=0】
+                #【这里假设对手是time=1】
                 ans += 1;
                 continue;
             if (tx,ty) == extra_go:#检查不通过，但恰好是extra_go
@@ -387,9 +414,9 @@ class assess:
             y += ACT[rev][1];
         for i in range(len(ACT)):
             if i == self.rev_step(rev):
-                bfs_list.append((i,self.__BFS_DIRECTION_SCORE+self.polite_score[i]));
+                bfs_list.append((i,self.__BFS_DIRECTION_SCORE+self.polite_score[i]+self.attack_score[i]));
             else:
-                bfs_list.append((i,self.polite_score[i]));
+                bfs_list.append((i,self.polite_score[i]+self.attack_score[i]));
         bfs_list.sort(key=self.sort_key,reverse=True);
 
         if bfs_list[0][0] != self.rev_step(rev):

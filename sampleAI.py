@@ -102,9 +102,9 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
         # logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
-        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
 
