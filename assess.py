@@ -32,6 +32,7 @@ class assess:
         self.snakes,self.snkid,self.this_snake = ctx.snake_list,snkid,ctx.get_snake(snkid);
         self.pos = self.this_snake.coor_list[0];
 
+        self.dist_map,self.path_map = dict(),dict();
         self.__find_path_bfs();
         self.scan_act();
         self.__calc_P_A_score();
@@ -89,6 +90,7 @@ class assess:
         self.safe_score = [0 for i in range(4)];
 
         x,y = self.pos;
+        will_log = False;
         for i,act in enumerate(ACT):
             tx = x + act[0];
             ty = y + act[1];
@@ -106,9 +108,13 @@ class assess:
                 self.safe_score[i] += self.__LOW_AIR_PARAM[0] + leng*self.__LOW_AIR_PARAM[1];
             else:
                 self.safe_score[i] += min(0,(leng/2-self.act_score[i])*self.__MID_AIR_PARAM);
+
+            if self.safe_score[i] > -90 and self.safe_score[i] < -0.5:
+                will_log = True;
         
-        logging.debug("act_score:%s" % self.act_score);
-        logging.debug("safe_score:%s" % self.safe_score);
+        if will_log:
+            logging.debug("act_score:%s" % self.act_score);
+            logging.debug("safe_score:%s" % self.safe_score);
 
     _scan_act_map : "list[list[int]]";
     __SCAN_ACT_MAX_DEPTH = 6;
@@ -282,6 +288,7 @@ class assess:
         某一个act将队友的“气”挤压到小于2，则polite_score减小；若是对手，则attack_score加大
         """
         x,y = self.pos;
+        will_log_atk,will_log_pol = False,False;
         self.polite_score = [-100,-100,-100,-100];
         self.attack_score = [-100,-100,-100,-100];
 
@@ -325,9 +332,16 @@ class assess:
             for i in range(len(ACT)):
                 if self.this_snake.get_len() + self.this_snake.length_bank <= 2:
                     self.attack_score[i] *= self.__SMALL_SNAKE_ATTACK_GAIN[self.this_snake.get_len() + self.this_snake.length_bank];
+            
+            if self.attack_score[i] > 0.5:
+                will_log_atk = True;
+            if self.polite_score[i] > -90 and self.polite_score[i] < -0.5:
+                will_log_pol = True;
 
-        logging.debug("polite_score:%s" % self.polite_score);
-        logging.debug("attack_score:%s" % self.attack_score);
+        if will_log_atk:
+            logging.debug("attack_score:%s" % self.attack_score);
+        if will_log_pol:
+            logging.debug("polite_score:%s" % self.polite_score);
 
     def calc_snk_air(self,pos : "tuple[int,int]",extra_block : "tuple[int,int]" = (-1,-1),extra_go : "tuple[int,int]" = (-1,-1)) -> int:
         """
@@ -398,14 +412,14 @@ class assess:
         rev = -1;
         if tgt == self.pos:#头已经在本格了，随便找一个可走的方向走
             return self.random_step();
-        if self.path_map[x][y] == -1:
+        if self.path_map[self.snkid][x][y] == -1:
             return self.greedy_step(tgt);
         
         bfs_list : "list[tuple[int,float]]" = [];
         while (x,y) != self.pos:
-            if self.path_map[x][y] == -1:
+            if self.path_map[self.snkid][x][y] == -1:
                 raise;
-            rev = self.rev_step(self.path_map[x][y]);
+            rev = self.rev_step(self.path_map[self.snkid][x][y]);
             x += ACT[rev][0];
             y += ACT[rev][1];
         for i in range(len(ACT)):
@@ -420,23 +434,31 @@ class assess:
             return bfs_list[0][0];
         logging.debug("寻路:%d 目标:(%d,%d)" % (self.rev_step(rev),tgt[0],tgt[1]));
         return bfs_list[0][0];
-    dist_map : "list[list[int]]";#保存距离，不可达格会是-1
-    path_map : "list[list[int]]";#保存“如何走到这一格”，注意这里是ACT的下标，本身格会是-1
+    dist_map : "dict[int,list[list[int]]]";#保存距离，不可达格会是-1
+    path_map : "dict[int,list[list[int]]]";#保存“如何走到这一格”，注意这里是ACT的下标，本身格会是-1
+    def refresh_all_bfs(self):
+        """
+        对所有蛇做一次bfs，并清除已死蛇的数据
+        """
+        self.dist_map,self.path_map = dict(),dict();
+        for _snake in self.snakes:
+            self.__find_path_bfs(_snake.id);
     def __find_path_bfs(self,snkid : int = -1):
         """
         跑一次从snkid所在位置到全图的bfs
         考虑了蛇的尾部的移动
+        【敌方蛇的check_mov是否应该用不同的time呢？】
         """
         if snkid == -1:
             snkid = self.snkid;
         nx,ny = self.ctx.get_snake(snkid).coor_list[0];
 
-        self.path_map = [[-1 for y in range(self.y_leng)] for x in range(self.x_leng)];
-        self.dist_map = [[-1 for y in range(self.y_leng)] for x in range(self.x_leng)];
+        self.path_map[snkid] = [[-1 for y in range(self.y_leng)] for x in range(self.x_leng)];
+        self.dist_map[snkid] = [[-1 for y in range(self.y_leng)] for x in range(self.x_leng)];
         queue : "list[tuple[int,int,int]]" = [];#(x,y,step)
 
         queue.append((nx,ny,0));#从起点开始
-        self.path_map[nx][ny],self.dist_map[nx][ny] = -1,0;
+        self.path_map[snkid][nx][ny],self.dist_map[snkid][nx][ny] = -1,0;
 
         while len(queue):
             x,y,step = queue[0];
@@ -446,10 +468,10 @@ class assess:
                 tx,ty = x+act[0],y+act[1];
                 if not self.check_mov_norm(tx,ty,step,snkid):
                     continue;
-                if self.dist_map[tx][ty] == -1:
+                if self.dist_map[snkid][tx][ty] == -1:
                     queue.append((tx,ty,step+1));
-                    self.path_map[tx][ty] = i;
-                    self.dist_map[tx][ty] = step+1;
+                    self.path_map[snkid][tx][ty] = i;
+                    self.dist_map[snkid][tx][ty] = step+1;
 
     def get_pos_on_snake(self,pos : "tuple[int,int]") -> int:
         x,y = pos;

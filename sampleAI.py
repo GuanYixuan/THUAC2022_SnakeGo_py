@@ -2,20 +2,71 @@ import assess;
 from adk import *;
 
 class AI:
-    ctx : Context = None;
-    snake : Snake = None;
+    ctx : Context;
+    snake : Snake;
     assess : "assess.assess";
     item_alloc : "list[int]";
-    wanted_item : "dict[int,Item]" = dict();#(蛇id:物品)
+    wanted_item : "dict[int,Item]";#(蛇id:物品)
     order : "dict[int,tuple[int,int]]" = dict();
 
+    __last_turn = -1;
     __first_mission = 0;
 
     def __init__(self):
-        self.ctx = None
-        self.snake = None
+        self.ctx = None;
+        self.snake = None;
         self.order = dict();
+
+    def total_control(self):
+        self.assess.refresh_all_bfs();
+        self.distribute_tgt();
+
+    __APPLE_PARAM_GAIN = 1.5;
+    __LASER_AS_APPLE = 1;
+    __HAS_LASER_COST = 7;
+    __MAX_COST_BOUND = 17;
+    def distribute_tgt(self):
+        """
+        [总控函数]为所有蛇分配目标
+        """
+        def sort_key(ele):
+            return ele[2];
+        
+        self.wanted_item = dict();
         self.item_alloc = [-1 for i in range(512)];
+        tgt_list : "list[tuple[int,Item,float]]" = [];#(snkid,item,cost)
+
+        for _item in self.ctx.game_map.item_list:
+            if _item.gotten_time != -1 or self.assess.check_item_captured_team(_item) != -1:#排除已被吃/将被吃
+                continue;
+            if _item.time - self.ctx.turn > 20:#太过久远，不考虑
+                continue;
+            
+            for _friend in self.ctx.snake_list:
+                if _friend.camp != self.ctx.current_player or self.assess.dist_map[_friend.id][_item.x][_item.y] == -1:
+                    continue;
+                snkid = _friend.id;
+                cost = max(self.assess.dist_map[snkid][_item.x][_item.y],_item.time-self.ctx.turn);#max(空间,时间)
+                if _item.type == 0:
+                    cost -= self.__APPLE_PARAM_GAIN * _item.param;
+                else:
+                    cost -= self.__APPLE_PARAM_GAIN * self.__LASER_AS_APPLE;
+                    cost += self.__HAS_LASER_COST * int(self.assess.has_laser(snkid));
+                
+                if cost <= self.__MAX_COST_BOUND:
+                    tgt_list.append((snkid,_item,cost));
+        
+        tgt_list.sort(key=sort_key);
+
+        complete_cnt = 0;
+        for snkid,_item,cost in tgt_list:
+            if complete_cnt >= self.ctx.get_snake_count(self.ctx.current_player):
+                break;
+            if self.item_alloc[_item.id] != -1 or self.wanted_item.get(snkid,-1) != -1:
+                continue;
+            logging.debug("目标分配:蛇%2d -> %s 代价%.1f" % (snkid,_item,cost));
+            self.item_alloc[_item.id] = snkid;
+            self.wanted_item[snkid] = _item;
 
     def try_split(self) -> bool:
         if self.snake.get_len() > 15 and self.ctx.get_snake_count(self.ctx.current_player) < 4 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
@@ -38,68 +89,10 @@ class AI:
             return True;
         return False;
 
-    def find_tgt(self) -> Item:#找一个东西
-        best = [1e8,-1,-1];#[dist,Item,id]
-        for ind,item in enumerate(self.ctx.game_map.item_list):
-            if item.type != 0 or item.gotten_time != -1 or self.ctx.turn >= item.time + 16:#只找还没被吃的食物
-                continue;
-            dist = self.assess.dist_map[item.x][item.y];
-            if dist == -1:
-                continue;
-            if item.time - self.ctx.turn >= 20 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
-                continue;
-            if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
-                continue;
-            # if self.ctx.turn + dist < item.time - 7:#不找太近的食物
-            #     continue;
-
-            if dist < best[0]:
-                best = [dist,item,item.id];
-        if best[2] != -1:
-            self.item_alloc[best[2]] = self.snake.id;
-            return best[1];
-        
-        best = [1e8,-1,-1];#[dist,Item,id]
-        for ind,item in enumerate(self.ctx.game_map.item_list):
-            if item.type != 2 or item.gotten_time != -1 or self.ctx.turn >= item.time + 16:#只找还没被吃的激光
-                continue;
-            dist = self.assess.dist_map[item.x][item.y];
-            if dist == -1:
-                continue;
-            if item.time - self.ctx.turn >= 20 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
-                continue;
-            if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
-                continue;
-            if dist < best[0]:
-                best = [dist,item,item.id];
-        if best[2] != -1:
-            self.item_alloc[best[2]] = self.snake.id;
-            return best[1];
-        return -1;
-
     def eat_strategy(self) -> int:
         if self.wanted_item.get(self.snake.id,-1) == -1:
-            self.wanted_item[self.snake.id] = self.find_tgt();
-            if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
-                logging.debug("未找到目标");
-                return self.assess.random_step();
-        
-        reget_item = False;
-        item = self.wanted_item[self.snake.id];
-        if item.gotten_time != -1 or self.ctx.turn >= item.time + 16:
-            reget_item = True;
-        if self.assess.check_item_captured_team(item) != -1:
-            reget_item = True;
-        
-        if reget_item:
-            self.wanted_item[self.snake.id] = self.find_tgt();
-            logging.debug("重载目标:%s" % self.wanted_item[self.snake.id]);
-            if not self.__first_mission:
-               self. __first_mission = 1;
-               if self.assess.can_split():
-                   return 6 - 1;
-            if self.wanted_item[self.snake.id] == -1:#没东西可吃，还没写
-                return self.assess.random_step();
+            logging.debug("未分配到目标");
+            return self.assess.random_step();
 
         item = self.wanted_item[self.snake.id];
         op = self.assess.find_first((item.x,item.y));
@@ -114,12 +107,14 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
-        # logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
-        # logging.basicConfig(stream=sys.stderr,level=logging.DEBUG,format=form,force=True);
-        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
+
+        if self.__last_turn != self.ctx.turn:
+            self.__last_turn = self.ctx.turn;
+            self.total_control();
 
         if self.try_shoot():
             return 5;
