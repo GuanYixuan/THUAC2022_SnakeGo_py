@@ -18,13 +18,13 @@ class AI:
         self.item_alloc = [-1 for i in range(512)];
 
     def try_split(self) -> bool:
-        if self.snake.get_len() > 17 and self.ctx.get_snake_count(self.ctx.current_player) < 4 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
+        if self.snake.get_len() > 15 and self.ctx.get_snake_count(self.ctx.current_player) < 4 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
             logging.debug("主动分裂，长度%d" % self.snake.get_len());
             return True;
-        if self.snake.get_len() > 15 and self.ctx.get_snake_count(self.ctx.current_player) < 3 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
+        if self.snake.get_len() > 13 and self.ctx.get_snake_count(self.ctx.current_player) < 3 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
             logging.debug("主动分裂，长度%d" % self.snake.get_len());
             return True;
-        if self.snake.get_len() > 13 and self.ctx.get_snake_count(self.ctx.current_player) < 2 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
+        if self.snake.get_len() > 11 and self.ctx.get_snake_count(self.ctx.current_player) < 2 and self.assess.can_split() and self.assess.calc_snk_air(self.snake.coor_list[-1]) >= 2:
             logging.debug("主动分裂，长度%d" % self.snake.get_len());
             return True;
         return False;
@@ -46,7 +46,7 @@ class AI:
             dist = self.assess.dist_map[item.x][item.y];
             if dist == -1:
                 continue;
-            if item.time - self.ctx.turn >= 25 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
+            if item.time - self.ctx.turn >= 20 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
                 continue;
             if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
                 continue;
@@ -66,7 +66,7 @@ class AI:
             dist = self.assess.dist_map[item.x][item.y];
             if dist == -1:
                 continue;
-            if item.time - self.ctx.turn >= 25 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
+            if item.time - self.ctx.turn >= 20 or self.ctx.turn + dist > item.time+16:#不找那么远（时间/空间上）的食物
                 continue;
             if self.item_alloc[item.id] != -1 or self.assess.check_item_captured_team(item) != -1:#不争抢
                 continue;
@@ -114,9 +114,10 @@ class AI:
         self.ctx,self.snake = ctx,snake;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
         # logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,format=form,force=True);
-        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        # logging.basicConfig(stream=sys.stderr,level=logging.DEBUG,format=form,force=True);
+        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
 
