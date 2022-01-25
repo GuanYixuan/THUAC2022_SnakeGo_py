@@ -10,21 +10,30 @@ class AI:
     order : "dict[int,tuple[int,int]]" = dict();
 
     __last_turn = -1;
-    __first_mission = 0;
 
     def __init__(self):
+        random.seed(0);
         self.ctx = None;
         self.snake = None;
         self.order = dict();
 
+    def time_control(self):
+        pass;
+        # if self.ctx.turn == 100:
+        #     self.__SLOW_COST_MULT = 4;
+
     def total_control(self):
+        self.time_control();
+
         self.assess.refresh_all_bfs();
+        self.assess.calc_spd_map();
         self.distribute_tgt();
 
     __APPLE_PARAM_GAIN = 1.5;
     __LASER_AS_APPLE = 1;
     __HAS_LASER_COST = 7;
     __MAX_COST_BOUND = 17;
+    __SLOW_COST_MULT = 1;
     def distribute_tgt(self):
         """
         [总控函数]为所有蛇分配目标
@@ -43,12 +52,19 @@ class AI:
                 continue;
             
             for _friend in self.ctx.snake_list:
-                if _friend.camp != self.ctx.current_player or self.assess.dist_map[_friend.id][_item.x][_item.y] == -1:
+                dst = self.assess.dist_map[_friend.id][_item.x][_item.y];
+                if _friend.camp != self.ctx.current_player or dst == -1 or self.ctx.turn + dst >= _item.time + 16:
+                    continue;
+                fastest = self.assess.tot_spd[_item.x][_item.y];
+
+                if dst - fastest[0] > 5:#抢不过别人就不抢...
                     continue;
                 snkid = _friend.id;
-                cost = max(self.assess.dist_map[snkid][_item.x][_item.y],_item.time-self.ctx.turn);#max(空间,时间)
+                cost = max(dst,_item.time-self.ctx.turn);#max(空间,时间)
+                if fastest[1] != _friend.id:
+                    cost += self.__SLOW_COST_MULT * (dst - fastest[0]);
                 if _item.type == 0:
-                    cost -= self.__APPLE_PARAM_GAIN * _item.param;
+                    cost -= self.__APPLE_PARAM_GAIN * _item.param;                                                                                       
                 else:
                     cost -= self.__APPLE_PARAM_GAIN * self.__LASER_AS_APPLE;
                     cost += self.__HAS_LASER_COST * int(self.assess.has_laser(snkid));
@@ -80,6 +96,21 @@ class AI:
             return True;
         return False;
 
+    # __AUTO_BUILD_EFFI_BOUND = 0.95;
+    # def try_build(self) -> int:
+    #     best = self.assess.get_enclosing_leng();
+    #     if best[0] == -1:
+    #         return -1;
+
+    #     score = -3;
+    #     score = (best[0] - self.snake.get_len() * self.__AUTO_BUILD_EFFI_BOUND) * 3;
+    #     score += max(0,-(max(self.assess.safe_score)+5) * 0.2);
+    #     score += 2 * int(self.ctx.get_snake_count(self.ctx.current_player) == 4);
+    #     if score > 0:
+    #         logging.debug("主动圈地: 利用%2d格 score:%.1f" % (best[0],score));
+    #         return best[1];
+    #     return -1;
+
     def try_shoot(self) -> bool:
         if not self.assess.can_shoot():
             return False;
@@ -99,16 +130,11 @@ class AI:
         return op;
 
     def judge(self, snake : Snake, ctx : Context):
-        """
-        :param snake: current snake
-        :param ctx: current context
-        :return: the decision
-        """
         self.ctx,self.snake = ctx,snake;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
-        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
 
@@ -120,6 +146,9 @@ class AI:
             return 5;
         if self.try_split():
             return 6;
+        # bu = self.try_build();
+        # if bu != -1:
+        #     return bu + 1;
         return self.eat_strategy()+1;
         
 
