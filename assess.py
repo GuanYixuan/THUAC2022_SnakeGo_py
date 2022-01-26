@@ -600,37 +600,6 @@ class assess:
         if self.check_first(snkid,blocking_snake):#snkid比blocking先走
             return False;
         return True;
-    def check_mov_norm(self,tx : int,ty : int,time : int = 0,snkid : int = -1,bank_val : int = -1) -> bool:
-        """
-        判断id=snkid的蛇在time时间后走到(tx,ty)这一格是否可行（不会被撞死）
-        """
-        if snkid == -1:
-            snkid = self.snkid;
-        snk = self.ctx.get_snake(snkid);
-
-        #越界/撞墙
-        if tx < 0 or ty < 0 or tx >= 16 or ty >= 16 or self.game_map.wall_map[tx][ty] != -1:
-            return False;
-        #撞蛇
-        blocking_snake = self.game_map.snake_map[tx][ty];
-        self_blocking = 0;
-        if blocking_snake == snkid:
-            self_blocking = 1;
-
-        if blocking_snake == -1:
-            return True;
-
-        if bank_val == -1:
-            bank_val = snk.length_bank;
-        leave_time =  self.get_pos_on_snake((tx,ty)) + bank_val - self_blocking;
-        if self_blocking: 
-            if leave_time <= time:
-                return True;
-            return False;
-        else:
-            if leave_time >= time:
-                return False;
-            return True;
 
     def can_split(self,snkid : int = -1) -> bool:
         if snkid == -1:
