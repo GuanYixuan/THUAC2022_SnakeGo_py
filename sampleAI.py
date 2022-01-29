@@ -1,10 +1,16 @@
 import assess;
+import search;
 from adk import *;
+
+def val_func(ctx):
+    return -100;
 
 class AI:
     ctx : Context;
-    snake : Snake;
+    controller : Controller;
     assess : "assess.assess";
+
+    snake : Snake;
     item_alloc : "list[int]";
     wanted_item : "dict[int,Item]";#(蛇id:物品)
     order : "dict[int,tuple[int,int]]" = dict();
@@ -21,6 +27,11 @@ class AI:
         pass;
         # if self.ctx.turn == 100:
         #     self.__SLOW_COST_MULT = 4;
+    
+    def total_init(self):
+        # s.setup_search(3,val_func);
+        # s.search();
+        pass;
 
     def total_control(self):
         self.time_control();
@@ -28,6 +39,9 @@ class AI:
         self.assess.refresh_all_bfs();
         self.assess.calc_spd_map();
         self.distribute_tgt();
+
+        #for i in range(1000):
+            #s = search.search(self.controller,[0,1],self.snake.id);
 
     __APPLE_PARAM_GAIN = 1.5;
     __LASER_AS_APPLE = 1;
@@ -129,18 +143,21 @@ class AI:
         op = self.assess.find_first((item.x,item.y));
         return op;
 
-    def judge(self, snake : Snake, ctx : Context):
-        self.ctx,self.snake = ctx,snake;
+    def judge(self, snake : Snake, ctx : Context,ctrl : Controller):
+        self.ctx,self.snake,self.controller = ctx,snake,ctrl;
         
         form = "%%(levelname)6s 行数%%(lineno)4d turn:%4d 编号:%2d %%(message)s" % (self.ctx.turn,self.snake.id);
-        # logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
-        logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
+        logging.basicConfig(filename="log.log",level=logging.DEBUG,format=form,force=True);
+        # logging.basicConfig(stream=sys.stderr,level=logging.CRITICAL,format=form,force=True);
 
         self.assess = assess.assess(self,ctx,snake.id);
 
         if self.__last_turn != self.ctx.turn:
             self.__last_turn = self.ctx.turn;
+            if self.ctx.turn == 1:
+                self.total_init();
             self.total_control();
+        
 
         if self.try_shoot():
             return 5;
@@ -185,7 +202,8 @@ def run():
         if player == current_player:  # Your Turn
             while controller.next_snake != -1:
                 current_snake = controller.current_snake_list[controller.next_snake][0]
-                op = ai.judge(current_snake, controller.ctx)  # TODO: Complete the Judge Function
+                # print(controller.current_snake_list);
+                op = ai.judge(current_snake, controller.ctx, controller)  # TODO: Complete the Judge Function
                 # logging.debug(str(op))
                 if not controller.apply(op):
                     pass

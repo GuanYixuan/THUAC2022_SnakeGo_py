@@ -177,6 +177,7 @@ class Context:
     current_player: int
     auto_growth_round: int
     max_round: int
+    snk_cnt_adj: "list[int]" = None;
 
     def __init__(self, config: GameConfig):
         self.snake_list = [
@@ -193,7 +194,9 @@ class Context:
         return self.game_map
 
     def get_snake_count(self, camp: int) -> int:
-        return sum(x.camp == camp for x in self.snake_list)
+        if self.snk_cnt_adj:
+            return sum(x.camp == camp for x in self.snake_list) + self.snk_cnt_adj[camp];
+        return sum(x.camp == camp for x in self.snake_list);
 
     def get_snake(self, id: int) -> Snake:
         for _snake in self.snake_list:
@@ -269,6 +272,12 @@ class Graph:
 
 
 class Controller:
+    ctx : Context;
+    map : Map;
+    player : int;
+    next_snake : int;
+    current_snake_list : "list[tuple[Snake,bool]]";
+
     def __init__(self, ctx: Context):
         self.ctx = ctx
         self.map = ctx.get_map()
